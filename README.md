@@ -1,6 +1,6 @@
 ## OpenPose Tracking on IR Camera
 
-![gif](https://i.imgur.com/Fmi57HJ.gifv)
+![gif](https://i.imgur.com/Fmi57HJ.gif)
 
 Tracking based on Mediapipe on IR rectified camera 
 Send tracking points via OSC :
