@@ -29,4 +29,4 @@ python3 main_v5.py
 
 ## Landmarks
 
-![landmarks.png](landmarks.png)
+![Utilities/landmarks.png](Utilities/landmarks.png)
