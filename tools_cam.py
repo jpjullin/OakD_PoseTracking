@@ -3,81 +3,21 @@
 from pathlib import Path
 import depthai as dai
 import numpy as np
+import json
 import cv2
+import tools_osc
 
 
 def create_mesh(res):
-    mesh = []
-    for i in range(2):
-        for j in range(2):
-            x = j * res['w']
-            y = i * res['h']
-            mesh.append((x, y))
-
-    return mesh
+    return [(j * res['w'], i * res['h']) for i in range(2) for j in range(2)]
 
 
-def get_mesh(calibData, resolution):
-    M1 = np.array(calibData.getCameraIntrinsics(dai.CameraBoardSocket.CAM_B, resolution['w'], resolution['h']))
-    d1 = np.array(calibData.getDistortionCoefficients(dai.CameraBoardSocket.CAM_B))
-    R1 = np.array(calibData.getStereoLeftRectificationRotation())
-    M2 = np.array(calibData.getCameraIntrinsics(dai.CameraBoardSocket.CAM_C, resolution['w'], resolution['h']))
-    d2 = np.array(calibData.getDistortionCoefficients(dai.CameraBoardSocket.CAM_C))
-    R2 = np.array(calibData.getStereoRightRectificationRotation())
-    mapXL, mapYL = cv2.initUndistortRectifyMap(M1, d1, R1, M2, (resolution['w'], resolution['h']), cv2.CV_32FC1)
-    mapXR, mapYR = cv2.initUndistortRectifyMap(M2, d2, R2, M2, (resolution['w'], resolution['h']), cv2.CV_32FC1)
-
-    meshCellSize = 16
-    meshLeft = []
-    meshRight = []
-
-    for y in range(mapXL.shape[0] + 1):
-        if y % meshCellSize == 0:
-            rowLeft = []
-            rowRight = []
-            for x in range(mapXL.shape[1] + 1):
-                if x % meshCellSize == 0:
-                    if y == mapXL.shape[0] and x == mapXL.shape[1]:
-                        rowLeft.append(mapYL[y - 1, x - 1])
-                        rowLeft.append(mapXL[y - 1, x - 1])
-                        rowRight.append(mapYR[y - 1, x - 1])
-                        rowRight.append(mapXR[y - 1, x - 1])
-                    elif y == mapXL.shape[0]:
-                        rowLeft.append(mapYL[y - 1, x])
-                        rowLeft.append(mapXL[y - 1, x])
-                        rowRight.append(mapYR[y - 1, x])
-                        rowRight.append(mapXR[y - 1, x])
-                    elif x == mapXL.shape[1]:
-                        rowLeft.append(mapYL[y, x - 1])
-                        rowLeft.append(mapXL[y, x - 1])
-                        rowRight.append(mapYR[y, x - 1])
-                        rowRight.append(mapXR[y, x - 1])
-                    else:
-                        rowLeft.append(mapYL[y, x])
-                        rowLeft.append(mapXL[y, x])
-                        rowRight.append(mapYR[y, x])
-                        rowRight.append(mapXR[y, x])
-            if (mapXL.shape[1] % meshCellSize) % 2 != 0:
-                rowLeft.append(0)
-                rowLeft.append(0)
-                rowRight.append(0)
-                rowRight.append(0)
-
-            meshLeft.append(rowLeft)
-            meshRight.append(rowRight)
-
-    meshLeft = np.array(meshLeft)
-    meshRight = np.array(meshRight)
-
-    return meshLeft, meshRight
+def save_mesh(path):
+    with open(path, 'w') as filehandle:
+        json.dump(tools_osc.warp_pos.tolist(), filehandle)
 
 
-def save_mesh(meshLeft, meshRight, outputPath):
-    meshLeft.tofile(outputPath + "/left.mesh")
-    meshRight.tofile(outputPath + "/right.mesh")
-
-
-def create_pipeline(mesh, params, meshPath):
+def create_pipeline(mesh, params):
     res = params['res']
     fps = params['fps']
     median = params['median']
@@ -89,39 +29,39 @@ def create_pipeline(mesh, params, meshPath):
     pipeline = dai.Pipeline()
 
     # Low light tuning
-    tuning_path = Path(__file__).with_name('tuning_mono_low_light.bin')
+    tuning_path = Path(__file__).parent.joinpath('utils/tuning_mono_low_light.bin')
     pipeline.setCameraTuningBlobPath(tuning_path)
 
     # Mono left camera
-    camLeft = pipeline.create(dai.node.MonoCamera)
-    camLeft.setCamera("left")
+    cam_left = pipeline.create(dai.node.MonoCamera)
+    cam_left.setCamera("left")
 
     # Mono right camera
-    camRight = pipeline.create(dai.node.MonoCamera)
-    camRight.setCamera("right")
+    cam_right = pipeline.create(dai.node.MonoCamera)
+    cam_right.setCamera("right")
 
     # Set resolution and fps
-    for monoCam in (camLeft, camRight):
-        monoCam.setResolution(res['res'])
-        monoCam.setFps(fps)
+    for mono_cam in (cam_left, cam_right):
+        mono_cam.setResolution(res['res'])
+        mono_cam.setFps(fps)
 
     # Create stereo pipeline
     stereo = pipeline.create(dai.node.StereoDepth)
-    camLeft.out.link(stereo.left)
-    camRight.out.link(stereo.right)
+    cam_left.out.link(stereo.left)
+    cam_right.out.link(stereo.right)
 
     # Stereo settings
     stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
-    stereo.initialConfig.setMedianFilter(median)  # KERNEL_7x7 default
-    stereo.setRectifyEdgeFillColor(0)  # Black, to better see the cutout
+    stereo.initialConfig.setMedianFilter(median)
+    stereo.setRectifyEdgeFillColor(0)
     stereo.setLeftRightCheck(lrcheck)
     stereo.setExtendedDisparity(extended)
     stereo.setSubpixel(subpixel)
 
     # Stream out rectified right
-    xoutRectifRight = pipeline.create(dai.node.XLinkOut)
-    xoutRectifRight.setStreamName("rectifiedRight")
-    stereo.rectifiedRight.link(xoutRectifRight.input)
+    xout_rectif_right = pipeline.create(dai.node.XLinkOut)
+    xout_rectif_right.setStreamName("rectifiedRight")
+    stereo.rectifiedRight.link(xout_rectif_right.input)
 
     # Create warp pipeline
     warp = pipeline.create(dai.node.Warp)
@@ -135,18 +75,47 @@ def create_pipeline(mesh, params, meshPath):
     warp.setInterpolation(dai.Interpolation.NEAREST_NEIGHBOR)
 
     # Stream out warped
-    xoutWarped = pipeline.create(dai.node.XLinkOut)
-    xoutWarped.setStreamName("warped")
-    warp.out.link(xoutWarped.input)
-
-    # Load custom mesh
-    if meshPath is not None:
-        # --------------------- NOT WORKING
-        stereo.loadMeshFiles(
-            Path(__file__).with_name('left.mesh'),
-            Path(__file__).with_name('right.mesh'))
-
-        print("Custom mesh loaded")
-        print("Not really I lied")
+    xout_warped = pipeline.create(dai.node.XLinkOut)
+    xout_warped.setStreamName("warped")
+    warp.out.link(xout_warped.input)
 
     return pipeline
+
+
+def find_corners(image):
+    image = cv2.GaussianBlur(image, (5, 5), 0)
+    _, image = cv2.threshold(image, tools_osc.corners_min, tools_osc.corners_max, cv2.THRESH_BINARY)
+
+    cv2.imshow("Thresh", image)
+
+    contours, _ = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    all_corners = []
+
+    for c in contours:
+        # Calculate the area of the contour
+        area = cv2.contourArea(c)
+
+        if area > 5000:
+            # Find the minimum area rectangle
+            rect = cv2.minAreaRect(c)
+
+            # Get the four corners
+            corners = cv2.boxPoints(rect)
+            corners = np.int0(corners)
+            all_corners.append(corners)
+
+    if all_corners:
+        result = np.array(all_corners[0], dtype=int)
+        result = result[[0, 1, 3, 2]]
+
+    else:
+        result = [
+            [0, 0],
+            [image.shape[1], 0],
+            [0, image.shape[0]],
+            [image.shape[1], image.shape[0]]
+        ]
+
+    tools_osc.find_corners = False
+    return result

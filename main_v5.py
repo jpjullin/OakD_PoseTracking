@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 
-import cv2
-import numpy as np
-import depthai as dai
-import mediapipe as mp
 from pathlib import Path
+import mediapipe as mp
+import depthai as dai
+import numpy as np
+import json
+import cv2
+
+import NDIlib as ndi
 
 import tools_osc
 import tools_vis
 import tools_cam
-
-# DELETE IF NO NDI
-import NDIlib as ndi
 
 # OSC
 oscReceive = tools_osc.osc_in("127.0.0.1", 2223)
@@ -21,7 +21,7 @@ oscSender = tools_osc.osc_out("127.0.0.1", 2222)
 resolution = "720"  # Options: 800 | 720 | 400
 fps = 30            # Frame/s (mono cameras)
 # Show the output frame (+fps)
-tools_osc.showFrame = False
+tools_osc.show_frame = False
 
 # Output to NDI
 out_ndi = False     # Output the frame to NDI (adds latency)
@@ -34,22 +34,13 @@ model = 0           # Options: 0=lite | 1=full | 2=heavy
 laserDot = False    # Project dots for active depth
 laserVal = 765      # in mA, 0..1200, don't go beyond 765
 irFlood = True      # IR brightness
-irVal = 750        # in mA, 0..1500
+irVal = 750         # in mA, 0..1500
 
 # Stereo parameters
 lrcheck = True      # Better handling for occlusions
 extended = False    # Closer-in minimum depth, disparity range is doubled
 subpixel = False    # Better accuracy for longer distance
 median = "7x7"      # Options: OFF | 3x3 | 5x5 | 7x7
-
-# Path to save mesh files
-meshDir = str(Path(__file__).parent.resolve())
-# Load custom mesh on startup
-if Path(__file__).with_name('left.mesh').is_file() and Path(__file__).with_name('right.mesh').is_file():
-    loadMesh = True
-else:
-    loadMesh = False
-    print("No custom mesh")
 
 # Verbose
 verbose = False     # Print info
@@ -59,7 +50,7 @@ RES_MAP = {
     '720': {'w': 1280, 'h': 720, 'res': dai.MonoCameraProperties.SensorResolution.THE_720_P},
     '400': {'w':  640, 'h': 400, 'res': dai.MonoCameraProperties.SensorResolution.THE_400_P}
 }
-resolution = tools_osc.resforMesh = RES_MAP[resolution]
+resolution = tools_osc.res_for_mesh = RES_MAP[resolution]
 
 MEDIAN_MAP = {
     "OFF": dai.StereoDepthProperties.MedianFilter.MEDIAN_OFF,
@@ -69,7 +60,19 @@ MEDIAN_MAP = {
 }
 median = MEDIAN_MAP[median]
 
-tools_osc.warp_pos = tools_cam.create_mesh(resolution)
+# Path to mesh
+meshPath = Path(__file__).parent.joinpath('utils/mesh.json')
+
+# Load custom mesh
+if meshPath.is_file():
+    if meshPath is not None:
+        with open(str(meshPath), 'r') as data:
+            mesh = json.loads(data.read())
+        tools_osc.warp_pos = np.array(mesh)
+        print("Custom mesh loaded")
+else:
+    tools_osc.warp_pos = tools_cam.create_mesh(resolution)
+    print("No custom mesh")
 
 # OpenPose
 mpPose = mp.solutions.pose
@@ -92,8 +95,38 @@ if out_ndi:
 
 running = True
 
+
+# Stop program
+def stop_program():
+    global running
+    running = False
+    if out_ndi:
+        ndi.send_destroy(ndi_send)
+        ndi.destroy()
+
+
+# GUI button
+gui_bg = np.ones((100, 200, 3), np.uint8) * 255  # Last one is color
+cv2.rectangle(gui_bg, (0, 0), (gui_bg.shape[1], gui_bg.shape[0]), (0, 0, 0), -1)
+
+gui_text = "Press q to stop"
+gui_font = cv2.FONT_HERSHEY_SIMPLEX
+gui_font_scale = 0.7
+gui_font_thickness = 1
+gui_text_size = cv2.getTextSize(gui_text, gui_font, gui_font_scale, gui_font_thickness)[0]
+
+# Center text
+gui_text_x = (gui_bg.shape[1] - gui_text_size[0]) // 2
+gui_text_y = (gui_bg.shape[0] + gui_text_size[1]) // 2
+cv2.putText(gui_bg, gui_text, (gui_text_x, gui_text_y), gui_font, gui_font_scale,
+            (255, 255, 255), gui_font_thickness, cv2.LINE_AA)
+
+# Display the GUI
+cv2.namedWindow("Oak-D Tracking", cv2.WINDOW_NORMAL)
+cv2.imshow("Oak-D Tracking", gui_bg)
+
 while running:
-    pipeline = tools_cam.create_pipeline(tools_osc.warp_pos, params, meshDir if loadMesh else None)
+    pipeline = tools_cam.create_pipeline(tools_osc.warp_pos, params)
 
     # Connect to device and start pipeline
     with dai.Device(pipeline) as device:
@@ -126,39 +159,25 @@ while running:
         nose_empty = np.zeros(3)
         x_empty = np.zeros(33)
         y_empty = np.zeros(33)
-        sendEmptyTracking = False
+        send_empty_tracking = False
 
         restart_device = False
+        new_start = True
 
         while not restart_device:
+            if new_start:
+                print("Device started")
+                new_start = False
+
             # Draw the mesh
-            if tools_osc.showFrame:
+            if tools_osc.show_frame:
                 frame = q_rectified.get()
-                if frame is not None:
-                    source = frame.getCvFrame()
-                    source = cv2.cvtColor(source, cv2.COLOR_GRAY2BGR)
-                    color = (0, 0, 255)
-                    for i in range(4):
-                        cv2.circle(source, (tools_osc.warp_pos[i][0], tools_osc.warp_pos[i][1]), 4, color, -1)
-
-                        if i % 2 != 2 - 1:
-                            cv2.line(source, (tools_osc.warp_pos[i][0], tools_osc.warp_pos[i][1]),
-                                     (tools_osc.warp_pos[i + 1][0], tools_osc.warp_pos[i + 1][1]), color, 2)
-
-                        if i + 2 < 4:
-                            cv2.line(source, (tools_osc.warp_pos[i][0], tools_osc.warp_pos[i][1]),
-                                     (tools_osc.warp_pos[i + 2][0], tools_osc.warp_pos[i + 2][1]), color, 2)
-
-                    cv2.imshow("Source", source)
-            else:
-                cv2.destroyWindow("Source")
+                tools_vis.show_source_frame(frame)
 
             frame_warped = q_warped.get()
-            if tools_osc.showFrame and not tracking:
+            if tools_osc.show_frame and not tracking:
                 if frame_warped is not None:
                     cv2.imshow("Warped", frame_warped.getCvFrame())
-            else:
-                cv2.destroyWindow("Warped")
 
             if tracking:
                 if frame_warped is not None:
@@ -169,40 +188,43 @@ while running:
 
                     # Get tracking values + Send OSC
                     if results.pose_landmarks:
-                        for id, lm in enumerate(results.pose_landmarks.landmark):
-                            if tools_osc.showFrame:
+                        for i, lm in enumerate(results.pose_landmarks.landmark):
+                            if tools_osc.show_frame:
                                 h, w, c = frame_warped.shape
                                 cx, cy = int(lm.x * w), int(lm.y * h)
                                 cv2.circle(frame_warped, (cx, cy), 5, (255, 0, 0), cv2.FILLED)
 
-                            if id == 0:
+                            if i == 0:
                                 nose = [lm.x, -lm.y+1, lm.z+1]
                             else:
                                 if lm.visibility > 0.8:
-                                    x[id] = lm.x
-                                    y[id] = -lm.y+1
+                                    x[i] = lm.x
+                                    y[i] = -lm.y+1
                                 else:
-                                    x[id] = 0
-                                    y[id] = 0
+                                    x[i] = 0
+                                    y[i] = 0
 
                         oscSender.send_message("/nose", nose)
                         oscSender.send_message("/x", x)
                         oscSender.send_message("/y", y)
-                        sendEmptyTracking = True
+                        send_empty_tracking = True
 
                     else:
                         # No new tracking values
-                        if sendEmptyTracking:
+                        if send_empty_tracking:
                             oscSender.send_message("/nose", nose_empty)
                             oscSender.send_message("/x", x_empty)
                             oscSender.send_message("/y", y_empty)
-                            sendEmptyTracking = False
+                            send_empty_tracking = False
 
                     # Show fps on out frame
-                    if tools_osc.showFrame:
+                    if tools_osc.show_frame:
                         cv2.imshow("Warped and tracked", tools_vis.show_frame(frame_warped))
-                    else:
-                        cv2.destroyWindow("Warped and tracked")
+
+            # Find corners
+            if tools_osc.find_corners:
+                corners = tools_cam.find_corners(q_rectified.get().getCvFrame())
+                tools_osc.warp_pos = corners
 
             # NDI
             if out_ndi:
@@ -212,24 +234,21 @@ while running:
                 ndi.send_send_video_v2(ndi_send, video_frame)
 
             # Restart the device if mesh has changed
-            if tools_osc.sendWarpConfig:
+            if tools_osc.send_warp_config:
                 print("Mesh changed, restarting...")
-                tools_osc.sendWarpConfig = False
+                tools_osc.send_warp_config = False
                 restart_device = True
 
             # Save mesh files
-            if tools_osc.saveMeshConfig:
-                meshLeft, meshRight = tools_cam.get_mesh(device.readCalibration(), resolution)
-                tools_cam.save_mesh(meshLeft, meshRight, meshDir)
-                print("Mesh saved to:", meshDir)
-                tools_osc.saveMeshConfig = False
+            if tools_osc.save_mesh_config:
+                tools_cam.save_mesh(meshPath)
+                print("Mesh saved to:", str(Path(meshPath)))
+                tools_osc.save_mesh_config = False
 
-            key = cv2.waitKey(1)
             # Exit
+            key = cv2.waitKey(1) & 0xFF
             if key == 27 or key == ord('q'):
-                running = False
-                tools_osc.osc_stop()
-                if out_ndi:
-                    ndi.send_destroy(ndi_send)
-                    ndi.destroy()
+                stop_program()
                 break
+
+cv2.destroyAllWindows()

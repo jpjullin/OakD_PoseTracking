@@ -1,20 +1,34 @@
 #!/usr/bin/env python3
 
+from threading import Thread
+
+import cv2
+from pythonosc.osc_server import ThreadingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
 from pythonosc.dispatcher import Dispatcher
-from pythonosc.osc_server import ThreadingOSCUDPServer
-import threading
 import numpy as np
 
-# Global warp positions
-warp_pos = np.empty(8)
-resforMesh = None
-sendWarpConfig = False
-saveMeshConfig = False
-showFrame = False
+# Constants
+OSC_ADDRESS_SHOW_FRAME = "/show_frame"
+OSC_ADDRESS_WARP_POS = "/warp_pos"
+OSC_ADDRESS_WARP_GO = "/warp_go"
+OSC_ADDRESS_WARP_SAVE = "/warp_save"
+OSC_ADDRESS_CORNERS_FIND = "/corners_find"
+OSC_ADDRESS_CORNERS_THRESH = "/corners_thresh"
+
+# Global variables
+warp_pos = np.zeros(8, dtype=int)
+res_for_mesh = None
+send_warp_config = False
+save_mesh_config = False
+show_frame = False
+find_corners = False
+corners_min = 0
+corners_max = 255
 
 # Threading
-global_thread = threading.Thread()
+global_thread = Thread(daemon=True)
+stop_thread = False
 
 
 def osc_in(ip, port):
@@ -24,7 +38,7 @@ def osc_in(ip, port):
     server = ThreadingOSCUDPServer((ip, port), disp)
     print("Listening on {}".format(server.server_address))
     global global_thread
-    global_thread = threading.Thread(target=server.serve_forever)
+    global_thread = Thread(target=server.serve_forever, daemon=True)
     global_thread.start()
 
 
@@ -32,34 +46,35 @@ def osc_out(ip, port):
     return SimpleUDPClient(ip, port)
 
 
-def osc_stop():
-    global global_thread
-    global_thread.join()
+def handle_msg(osc_address, *msg):
+    # print(osc_address, msg)
 
+    global show_frame, send_warp_config, save_mesh_config, warp_pos, res_for_mesh, \
+        find_corners, corners_min, corners_max
 
-def handle_msg(addr, *msg):
-    # print(addr, msg)
+    if osc_address == OSC_ADDRESS_SHOW_FRAME:
+        cv2.destroyWindow("Source")
+        cv2.destroyWindow("Warped")
+        cv2.destroyWindow("Warped and tracked")
+        show_frame = bool(msg[0])
 
-    if addr == "/show_frame":
-        global showFrame
-        if msg[0] == 0:
-            showFrame = False
-        if msg[0] == 1:
-            showFrame = True
-
-    if addr == "/warp_pos":
-        # Check if 8 values
+    elif osc_address == OSC_ADDRESS_WARP_POS:
         if len(msg) != 8:
             print("Not enough values, need 8")
         else:
-            global warp_pos
             for i in range(4):
-                warp_pos[i] = (int(msg[i*2] * resforMesh['w']), int(msg[(i*2)+1] * resforMesh['h']))
+                warp_pos[i] = (int(msg[i * 2] * res_for_mesh['w']), int(msg[(i * 2) + 1] * res_for_mesh['h']))
 
-    if addr == "/warp_go":
-        global sendWarpConfig
-        sendWarpConfig = True
+    elif osc_address == OSC_ADDRESS_WARP_GO:
+        send_warp_config = True
 
-    if addr == "/warp_save":
-        global saveMeshConfig
-        saveMeshConfig = True
+    elif osc_address == OSC_ADDRESS_WARP_SAVE:
+        save_mesh_config = True
+
+    elif osc_address == OSC_ADDRESS_CORNERS_FIND:
+        find_corners = True
+
+    elif osc_address == OSC_ADDRESS_CORNERS_THRESH:
+        corners_min = msg[0]
+        corners_max = msg[1]
+
