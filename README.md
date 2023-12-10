@@ -1,6 +1,6 @@
 ## OpenPose Tracking on IR Camera
 
-![gif](https://i.imgur.com/Fmi57HJ.gif)
+![gif](utils/tracking_demo.gif)
 
 Tracking based on Mediapipe on IR rectified camera 
 
