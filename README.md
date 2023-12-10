@@ -3,6 +3,7 @@
 ![gif](https://i.imgur.com/Fmi57HJ.gif)
 
 Tracking based on Mediapipe on IR rectified camera 
+
 Send tracking points via OSC :
 - /nose [x, y, z]
 - /x
@@ -31,4 +32,4 @@ python3 main_v5.py
 
 ## Landmarks
 
-![Utilities/landmarks.png](Utilities/landmarks.png)
+![utils/landmarks.png](utils/landmarks.png)
