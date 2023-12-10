@@ -8,7 +8,7 @@ from pythonosc.udp_client import SimpleUDPClient
 from pythonosc.dispatcher import Dispatcher
 import numpy as np
 
-# Constants
+# OSC addresses
 OSC_ADDRESS_SHOW_FRAME = "/show_frame"
 OSC_ADDRESS_WARP_POS = "/warp_pos"
 OSC_ADDRESS_WARP_GO = "/warp_go"
@@ -77,4 +77,3 @@ def handle_msg(osc_address, *msg):
     elif osc_address == OSC_ADDRESS_CORNERS_THRESH:
         corners_min = msg[0]
         corners_max = msg[1]
-

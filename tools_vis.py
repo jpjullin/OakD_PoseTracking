@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import depthai as dai
 import time
 import cv2
 import tools_osc

@@ -1,13 +1,15 @@
-## OpenPose Tracking on IR Camera
+## Body tracking on Oak-D Camera
 
 ![gif](utils/tracking_demo.gif)
 
-Tracking based on Mediapipe on IR rectified camera 
+Tracking 33 points of human body on an Oak-D camera (infrared mono rectified stream)
 
-Send tracking points via OSC :
+Based on Mediapipe pose: 
+
+Sending x33 tracking points via OSC :
 - /nose [x, y, z]
-- /x
-- /y
+- /x [:33]
+- /y [:33]
 
 + Optional send video via NDI
 

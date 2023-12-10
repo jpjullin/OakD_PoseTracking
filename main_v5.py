@@ -7,7 +7,7 @@ import numpy as np
 import json
 import cv2
 
-import NDIlib as ndi
+import NDIlib as Ndi
 
 import tools_osc
 import tools_vis
@@ -31,10 +31,10 @@ tracking = True     # Activate OpenPose Tracking
 model = 0           # Options: 0=lite | 1=full | 2=heavy
 
 # Night vision
-laserDot = False    # Project dots for active depth
-laserVal = 765      # in mA, 0..1200, don't go beyond 765
-irFlood = True      # IR brightness
-irVal = 750         # in mA, 0..1500
+laser_dot = False    # Project dots for active depth
+laser_val = 765      # in mA, 0..1200, don't go beyond 765
+ir_flood = True      # IR brightness
+ir_val = 750         # in mA, 0..1500
 
 # Stereo parameters
 lrcheck = True      # Better handling for occlusions
@@ -88,10 +88,10 @@ params = {
 }
 
 if out_ndi:
-    send_settings = ndi.SendCreate()
+    send_settings = Ndi.SendCreate()
     send_settings.ndi_name = 'ndi-python'
-    ndi_send = ndi.send_create(send_settings)
-    video_frame = ndi.VideoFrameV2()
+    ndi_send = Ndi.send_create(send_settings)
+    video_frame = Ndi.VideoFrameV2(FourCC=Ndi.FOURCC_VIDEO_TYPE_BGRX)
 
 running = True
 
@@ -101,8 +101,8 @@ def stop_program():
     global running
     running = False
     if out_ndi:
-        ndi.send_destroy(ndi_send)
-        ndi.destroy()
+        Ndi.send_destroy(ndi_send)
+        Ndi.destroy()
 
 
 # GUI button
@@ -139,12 +139,12 @@ while running:
         print("Starting device")
 
         # Dot brightness
-        if laserDot:
-            device.setIrLaserDotProjectorBrightness(laserVal)  # in mA, 0..1200
+        if laser_dot:
+            device.setIrLaserDotProjectorBrightness(laser_val)  # in mA, 0..1200
 
         # IR brightness
-        if irFlood:
-            device.setIrFloodLightBrightness(irVal)  # in mA, 0..1500
+        if ir_flood:
+            device.setIrFloodLightBrightness(ir_val)  # in mA, 0..1500
 
         # Output queues
         q_rectified = device.getOutputQueue(name="rectifiedRight", maxSize=4, blocking=False)
@@ -196,13 +196,13 @@ while running:
 
                             if i == 0:
                                 nose = [lm.x, -lm.y+1, lm.z+1]
+
+                            if lm.visibility > 0.8:
+                                x[i] = lm.x
+                                y[i] = -lm.y+1
                             else:
-                                if lm.visibility > 0.8:
-                                    x[i] = lm.x
-                                    y[i] = -lm.y+1
-                                else:
-                                    x[i] = 0
-                                    y[i] = 0
+                                x[i] = 0
+                                y[i] = 0
 
                         oscSender.send_message("/nose", nose)
                         oscSender.send_message("/x", x)
@@ -230,8 +230,7 @@ while running:
             if out_ndi:
                 img = cv2.cvtColor(frame_warped, cv2.COLOR_BGR2BGRA)
                 video_frame.data = img
-                video_frame.FourCC = ndi.FOURCC_VIDEO_TYPE_BGRX
-                ndi.send_send_video_v2(ndi_send, video_frame)
+                Ndi.send_send_video_v2(ndi_send, video_frame)
 
             # Restart the device if mesh has changed
             if tools_osc.send_warp_config:
