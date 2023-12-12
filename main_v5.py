@@ -20,6 +20,7 @@ oscSender = tools_osc.osc_out("127.0.0.1", 2222)
 # Main parameters
 resolution = "720"  # Options: 800 | 720 | 400
 fps = 30            # Frame/s (mono cameras)
+
 # Show the output frame (+fps)
 tools_osc.show_frame = False
 
@@ -31,10 +32,10 @@ tracking = True     # Activate OpenPose Tracking
 model = 0           # Options: 0=lite | 1=full | 2=heavy
 
 # Night vision
-laser_dot = False    # Project dots for active depth
-laser_val = 765      # in mA, 0..1200, don't go beyond 765
-ir_flood = True      # IR brightness
-ir_val = 750         # in mA, 0..1500
+laser_dot = False   # Project dots for active depth
+laser_val = 765     # in mA, 0..1200, don't go beyond 765
+ir_flood = True     # IR brightness
+ir_val = 1500       # in mA, 0..1500
 
 # Stereo parameters
 lrcheck = True      # Better handling for occlusions
@@ -43,7 +44,7 @@ subpixel = False    # Better accuracy for longer distance
 median = "7x7"      # Options: OFF | 3x3 | 5x5 | 7x7
 
 # Verbose
-verbose = False     # Print info
+verbose = False     # Print (some) info about cam
 
 RES_MAP = {
     '800': {'w': 1280, 'h': 800, 'res': dai.MonoCameraProperties.SensorResolution.THE_800_P},
@@ -79,8 +80,8 @@ mpPose = mp.solutions.pose
 pose = mpPose.Pose(model_complexity=model,  # 0-2 = lite, full, heavy
                    enable_segmentation=True,
                    smooth_segmentation=True,
-                   min_detection_confidence=0.5,
-                   min_tracking_confidence=0.5)
+                   min_detection_confidence=0.7,
+                   min_tracking_confidence=0.7)
 
 params = {
     'res': resolution, 'fps': fps, 'median': median,
@@ -188,21 +189,24 @@ while running:
 
                     # Get tracking values + Send OSC
                     if results.pose_landmarks:
-                        for i, lm in enumerate(results.pose_landmarks.landmark):
-                            if tools_osc.show_frame:
+                        for i, lm in zip(range(33), results.pose_landmarks.landmark):  # 33 landmarks
+                            if tools_osc.show_frame or out_ndi:
                                 h, w, c = frame_warped.shape
                                 cx, cy = int(lm.x * w), int(lm.y * h)
                                 cv2.circle(frame_warped, (cx, cy), 5, (255, 0, 0), cv2.FILLED)
 
                             if i == 0:
-                                nose = [lm.x, -lm.y+1, lm.z+1]
+                                nose = [lm.x, -lm.y + 1, lm.z + 1]
 
-                            if lm.visibility > 0.8:
-                                x[i] = lm.x
-                                y[i] = -lm.y+1
-                            else:
-                                x[i] = 0
-                                y[i] = 0
+                            x[i] = lm.x
+                            y[i] = -lm.y + 1
+
+                            # if lm.visibility > 0.8:
+                            #     x[i] = lm.x
+                            #     y[i] = -lm.y + 1
+                            # else:
+                            #     x[i] = 0
+                            #     y[i] = 0
 
                         oscSender.send_message("/nose", nose)
                         oscSender.send_message("/x", x)

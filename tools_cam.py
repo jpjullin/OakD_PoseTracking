@@ -86,36 +86,29 @@ def find_corners(image):
     image = cv2.GaussianBlur(image, (5, 5), 0)
     _, image = cv2.threshold(image, tools_osc.corners_min, tools_osc.corners_max, cv2.THRESH_BINARY)
 
-    cv2.imshow("Thresh", image)
-
     contours, _ = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    all_corners = []
+    # In case there is no good result
+    result = np.array([
+        [0, 0],
+        [image.shape[1], 0],
+        [0, image.shape[0]],
+        [image.shape[1], image.shape[0]]
+    ], dtype=int)
 
-    for c in contours:
-        # Calculate the area of the contour
-        area = cv2.contourArea(c)
+    for contour in contours:
+        # Approximate the contour as a polygon
+        epsilon = 0.04 * cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, epsilon, True)
 
-        if area > 5000:
-            # Find the minimum area rectangle
-            rect = cv2.minAreaRect(c)
+        if len(approx) == 4:
+            color_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            cv2.drawContours(color_image, [approx], 0, (0, 0, 255), 2)
 
-            # Get the four corners
-            corners = cv2.boxPoints(rect)
-            corners = np.int0(corners)
-            all_corners.append(corners)
+            cv2.imshow('Rectangle', color_image)
 
-    if all_corners:
-        result = np.array(all_corners[0], dtype=int)
-        result = result[[0, 1, 3, 2]]
-
-    else:
-        result = [
-            [0, 0],
-            [image.shape[1], 0],
-            [0, image.shape[0]],
-            [image.shape[1], image.shape[0]]
-        ]
+            # Reshape to a 2D array and reorder the corners
+            result = np.array(approx, dtype=int).reshape(-1, 2)[[0, 3, 1, 2]]
 
     tools_osc.find_corners = False
     return result
