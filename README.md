@@ -2,9 +2,13 @@
 
 ![gif](utils/tracking_demo.gif)
 
-Tracking 33 points of human body on an Oak-D camera (infrared mono rectified stream)
+Tracking 33 points of human body on an Oak-D camera 
 
-Based on Mediapipe pose: 
+Tracking on:
+- IR mono right rectified stream
+- Disparity
+
+Based on Mediapipe pose: https://github.com/google/mediapipe.git
 
 Sending x33 tracking points via OSC :
 - /nose [x, y, z]
@@ -29,7 +33,7 @@ python3 -m pip install ndi-python
 ## Usage
 
 ```
-python3 main_v5.py
+python3 main_v6.py
 ```
 
 ## Landmarks
