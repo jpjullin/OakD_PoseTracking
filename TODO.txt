@@ -1,0 +1,9 @@
+arp -a
+
+ssh pi@192.168.137.40
+
+cd ~/Desktop/OakD_PoseTracking/venv
+source bin/activate
+cd ~/Desktop/OakD_PoseTracking
+
+python3 main_v7.py

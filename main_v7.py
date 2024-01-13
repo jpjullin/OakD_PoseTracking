@@ -3,18 +3,16 @@
 from pathlib import Path
 import mediapipe as mp
 import depthai as dai
-import NDIlib as Ndi
 import numpy as np
 import tools
 import cv2
 
 # Load configuration
-config = tools.Config()
+config = tools.Config(model=0, ip="192.168.137.1")  # Options: 0=lite | 1=full | 2=heavy
 
-config.show_frame = True
-config.out_ndi = True
-config.model = 0
-config.depth = True
+config.show_frame = False   # Show the output frame (+fps)
+config.ir_val = 1           # IR brightness (0 to 1)
+config.depth = False        # Track on depth image
 
 # Initialize OSC and load custom mesh
 tools.initialize_osc(config)
@@ -29,14 +27,6 @@ pose = mpPose.Pose(
     min_detection_confidence=config.mp_pose_min_detection_confidence,
     min_tracking_confidence=config.mp_pose_min_tracking_confidence
 )
-
-# Initialize NDI
-ndi_send = video_frame = None
-if config.out_ndi:
-    send_settings = Ndi.SendCreate()
-    send_settings.ndi_name = 'ndi-python'
-    ndi_send = Ndi.send_create(send_settings)
-    video_frame = Ndi.VideoFrameV2(FourCC=Ndi.FOURCC_VIDEO_TYPE_BGRX)
 
 config.running = True
 
@@ -59,13 +49,10 @@ while config.running:
         print("Starting device")
 
         # Dot brightness
-        if config.depth:
-            config.laser_dot = True
-            device.setIrLaserDotProjectorBrightness(config.laser_val)
+        device.setIrLaserDotProjectorIntensity(config.laser_val)
 
         # IR brightness
-        if config.ir_flood:
-            device.setIrFloodLightBrightness(config.ir_val)
+        device.setIrFloodLightIntensity(config.ir_val)
 
         # Output queues
         if config.depth:
@@ -73,16 +60,10 @@ while config.running:
         q_rectified = device.getOutputQueue(name="rectifiedRight", maxSize=4, blocking=False)
         q_warped = device.getOutputQueue(name="warped", maxSize=4, blocking=False)
 
-        # Tracking values (no init)
-        nose = np.empty(3)
-        x = np.empty(33)
-        y = np.empty(33)
-
-        # Empty tracking (init 0)
-        nose_empty = np.zeros(3)
-        x_empty = np.zeros(33)
-        y_empty = np.zeros(33)
-        send_empty_tracking = False
+        # Tracking values
+        nose = np.zeros(3)
+        x = np.zeros(33)
+        y = np.zeros(33)
 
         restart_device = False
         new_start = True
@@ -115,29 +96,31 @@ while config.running:
                     # Get tracking values + Send OSC
                     if results.pose_landmarks:
                         for i, lm in zip(range(33), results.pose_landmarks.landmark):  # 33 landmarks
-                            if config.show_frame or config.out_ndi:
+                            if config.show_frame:
                                 h, w, c = frame_warped.shape
                                 cx, cy = int(lm.x * w), int(lm.y * h)
                                 cv2.circle(frame_warped, (cx, cy), 5, (255, 0, 0), cv2.FILLED)
 
-                            if i == 0:
-                                nose = [lm.x, -lm.y + 1, lm.z + 1]
+                            lm.y = -lm.y + 1
 
-                            x[i] = lm.x
-                            y[i] = -lm.y + 1
+                            if 0 < lm.y < 1 and 0 < lm.x < 1:
+                                x[i] = lm.x
+                                y[i] = lm.y
 
-                        config.osc_sender.send_message("/nose", nose)
-                        config.osc_sender.send_message("/x", x)
-                        config.osc_sender.send_message("/y", y)
-                        send_empty_tracking = True
+                                if i == 0:
+                                    lm.z = lm.z + 1
+                                    nose = [lm.x, lm.y, lm.z]
 
-                    else:
-                        # No new tracking values
-                        if send_empty_tracking:
-                            config.osc_sender.send_message("/nose", nose_empty)
-                            config.osc_sender.send_message("/x", x_empty)
-                            config.osc_sender.send_message("/y", y_empty)
-                            send_empty_tracking = False
+                        # Check if any valid values were found
+                        if any(0 <= xi <= 1 for xi in x) and any(0 <= yi <= 1 for yi in y):
+                            config.osc_sender.send_message("/nose", nose)
+                            config.osc_sender.send_message("/x", x)
+                            config.osc_sender.send_message("/y", y)
+                        else:
+                            # If no valid values found, send the last valid values
+                            config.osc_sender.send_message("/nose", nose)
+                            config.osc_sender.send_message("/x", x)
+                            config.osc_sender.send_message("/y", y)
 
                     # Show fps on out frame
                     if config.show_frame:
@@ -147,12 +130,6 @@ while config.running:
             if config.find_corners:
                 corners = tools.find_corners(q_rectified.get().getCvFrame(), config)
                 config.warp_pos = corners
-
-            # NDI
-            if config.out_ndi:
-                img = cv2.cvtColor(frame_warped, cv2.COLOR_BGR2BGRA)
-                video_frame.data = img
-                Ndi.send_send_video_v2(ndi_send, video_frame)
 
             # Restart the device if mesh has changed
             if config.send_warp_config:
@@ -169,7 +146,7 @@ while config.running:
             # Exit
             key = cv2.waitKey(1) & 0xFF
             if key == 27 or key == ord('q'):
-                tools.stop_program(config, ndi_send)
+                tools.stop_program(config)
                 break
 
 cv2.destroyAllWindows()

@@ -22,9 +22,7 @@ Sending x33 tracking points via OSC :
 Install requirements:
 ```
 python3 -m pip install opencv-python --force-reinstall --no-cache-dir
-
-[//]: # (python3 install_requirements.py)
-
+python3 -m pip install depthai
 python3 -m pip install mediapipe
 python3 -m pip install python-osc
 python3 -m pip install ndi-python

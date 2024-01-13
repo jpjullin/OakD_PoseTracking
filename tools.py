@@ -3,10 +3,10 @@
 from pythonosc.osc_server import ThreadingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
 from pythonosc.dispatcher import Dispatcher
+from datetime import datetime
 from threading import Thread
 from pathlib import Path
 import depthai as dai
-import NDIlib as Ndi
 import numpy as np
 import time
 import json
@@ -14,12 +14,12 @@ import cv2
 
 
 class Config:
-    def __init__(self):
+    def __init__(self, model=0, ip="127.0.0.1"):
         # OSC
         self.osc_receive_ip = "127.0.0.1"
         self.osc_receive_port = 2223
 
-        self.osc_send_ip = "127.0.0.1"
+        self.osc_send_ip = ip
         self.osc_send_port = 2222
         self.osc_sender = None
 
@@ -28,12 +28,9 @@ class Config:
         self.fps = 30            # Frame/s (mono cameras)
         self.show_frame = False  # Show the output frame (+fps)
 
-        # Output to NDI
-        self.out_ndi = False     # Output the frame to NDI (adds latency)
-
         # Tracking
         self.tracking = True     # Activate OpenPose Tracking
-        self.model = 0           # Options: 0=lite | 1=full | 2=heavy
+        self.model = model       # Options: 0=lite | 1=full | 2=heavy
 
         # Depth tracking
         self.depth = False       # Track on depth image
@@ -44,10 +41,8 @@ class Config:
         self.cv_color_map[0] = [0, 0, 0]
 
         # Night vision
-        self.laser_dot = False   # Project dots for active depth
-        self.laser_val = 765     # in mA, 0..1200, don't go beyond 765
-        self.ir_flood = True     # IR brightness
-        self.ir_val = 1500       # in mA, 0..1500
+        self.laser_val = 0       # Project dots for active depth (0 to 1)
+        self.ir_val = 1          # IR Brightness (0 to 1)
 
         # Stereo parameters
         self.lrcheck = True      # Better handling for occlusions
@@ -66,8 +61,8 @@ class Config:
         self.mp_pose_model_complexity = self.model
         self.mp_pose_enable_segmentation = True
         self.mp_pose_smooth_segmentation = True
-        self.mp_pose_min_detection_confidence = 0.7
-        self.mp_pose_min_tracking_confidence = 0.7
+        self.mp_pose_min_detection_confidence = 0.5
+        self.mp_pose_min_tracking_confidence = 0.5
 
         # Resolution
         self.res_map = {
@@ -124,6 +119,8 @@ def handle_msg(osc_address, msg, config):
         ),
         "/warp_pos": lambda: setattr(config, 'warp_pos', [
             (int(msg[i * 2] * config.resolution['w']), int(msg[(i * 2) + 1] * config.resolution['h']))
+            if i * 2 < len(msg) and (i * 2) + 1 < len(msg)
+            else (0, 0)
             for i in range(4)
         ]),
         "/warp_go": lambda: setattr(config, 'send_warp_config', True),
@@ -142,6 +139,8 @@ def create_mesh(res):
 
 
 def save_mesh(path, warp_pos):
+    if not isinstance(warp_pos, list):
+        warp_pos = warp_pos.tolist()
     with open(path, 'w') as filehandle:
         json.dump(warp_pos, filehandle)
 
@@ -265,7 +264,7 @@ def find_corners(image, config):
     return result
 
 
-# --------------------------------------- VISUALISATION DEF ---------------------------------------
+# --------------------------------------- VISUALISATION ---------------------------------------
 def show_frame(frame):
     current_time = time.time()
     fps = 1 / (current_time - show_frame.previous_time)
@@ -318,8 +317,6 @@ def create_gui_bg():
     return gui_bg
 
 
-def stop_program(config, ndi_send=None):
+# --------------------------------------- PROGRAM ---------------------------------------
+def stop_program(config):
     config.running = False
-    if config.out_ndi and ndi_send:
-        Ndi.send_destroy(ndi_send)
-        Ndi.destroy()
