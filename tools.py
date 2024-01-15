@@ -16,7 +16,7 @@ import cv2
 class Config:
     def __init__(self, model=0, ip="127.0.0.1"):
         # OSC
-        self.osc_receive_ip = "127.0.0.1"
+        self.osc_receive_ip = "0.0.0.0"
         self.osc_receive_port = 2223
 
         self.osc_send_ip = ip

@@ -8,7 +8,7 @@ import tools
 import cv2
 
 # Load configuration
-config = tools.Config(model=0, ip="192.168.137.1")  # Options: 0=lite | 1=full | 2=heavy
+config = tools.Config(model=0, ip="192.168.3.1")  # Options: 0=lite | 1=full | 2=heavy
 
 config.show_frame = False   # Show the output frame (+fps)
 config.ir_val = 1           # IR brightness (0 to 1)

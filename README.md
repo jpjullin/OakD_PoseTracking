@@ -4,7 +4,7 @@
 
 Tracking 33 points of human body on an Oak-D camera 
 
-Tracking on:
+Tracking available on:
 - IR mono right rectified stream
 - Disparity
 
@@ -15,8 +15,6 @@ Sending x33 tracking points via OSC :
 - /x [:33]
 - /y [:33]
 
-+ Optional send video via NDI
-
 ## Pre-requisites
 
 Install requirements:
@@ -25,13 +23,12 @@ python3 -m pip install opencv-python --force-reinstall --no-cache-dir
 python3 -m pip install depthai
 python3 -m pip install mediapipe
 python3 -m pip install python-osc
-python3 -m pip install ndi-python
 ```
 
 ## Usage
 
 ```
-python3 main_v6.py
+python3 main.py
 ```
 
 ## Landmarks
