@@ -99,13 +99,14 @@ def initialize_osc(config):
     disp.map("/*", lambda osc_address, *msg: handle_msg(osc_address, msg, config))
 
     server = ThreadingOSCUDPServer((config.osc_receive_ip, config.osc_receive_port), disp)
-    print("Listening on {}".format(server.server_address))
+    print("Listening on port", config.osc_receive_port)
 
     global_thread = Thread(target=server.serve_forever, daemon=True)
     global_thread.start()
 
     # Sender
     config.osc_sender = SimpleUDPClient(config.osc_send_ip, config.osc_send_port)
+    print("Sending on", config.osc_send_ip, config.osc_send_port)
 
 
 def handle_msg(osc_address, msg, config):
