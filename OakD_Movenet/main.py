@@ -4,6 +4,10 @@ from utils import *
 
 # Load configuration
 config = Config(nn_model='lightning', ip="192.168.3.1")
+# config = Config(nn_model='lightning', ip="127.0.0.1")
+# config.show_frame = True
+config.check_consistency = True
+config.consistency_threshold = 2.2
 
 # Initialize OSC and load custom mesh
 initialize_osc(config)
@@ -40,9 +44,10 @@ while config.running:
         q_nn = device.getOutputQueue(name="nn", maxSize=4, blocking=False)
 
         # Tracking values
-        nose = np.zeros(3)
+        nose = np.zeros(2)
         x = np.zeros(17)
         y = np.zeros(17)
+        scores = np.zeros(17)
 
         restart_device = False
         new_start = True
@@ -62,13 +67,23 @@ while config.running:
                 for i in range(17):
                     kpt_x = in_nn[3 * i + 1]
                     kpt_y = in_nn[3 * i] * -1 + 1
+                    scores[i] = in_nn[3 * i + 2]
 
                     if 0 < kpt_x < 1 and 0 < kpt_y < 1:
-                        x[i] = kpt_x
-                        y[i] = kpt_y
+                        if config.check_consistency and \
+                                check_spatial_consistency(x, y, scores, threshold=config.consistency_threshold):
+                            x[i] = kpt_x
+                            y[i] = kpt_y
 
-                        if i == 0:
-                            nose = [kpt_x, kpt_y]
+                            if i == 0:
+                                nose = [kpt_x, kpt_y]
+
+                        if not config.check_consistency:
+                            x[i] = kpt_x
+                            y[i] = kpt_y
+
+                            if i == 0:
+                                nose = [kpt_x, kpt_y]
 
                 if config.show_frame:
                     # Source frame

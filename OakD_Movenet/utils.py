@@ -47,6 +47,8 @@ class Config:
 
         # Tracking model
         self.nn_model = nn_model
+        self.check_consistency = True
+        self.consistency_threshold = 2.2
 
         self.nn_models = {
             'lightning': {'path': 'utils/movenet_singlepose_lightning_U8_transpose.blob', 'input': 192},
@@ -268,6 +270,67 @@ def find_corners(image, config):
 
     config.find_corners = False
     return result
+
+
+# --------------------------------------- TRACKING UTILITIES ---------------------------------------
+KEYPOINT_DICT = {
+    'nose': 0,
+    'left_eye': 1,
+    'right_eye': 2,
+    'left_ear': 3,
+    'right_ear': 4,
+    'left_shoulder': 5,
+    'right_shoulder': 6,
+    'left_elbow': 7,
+    'right_elbow': 8,
+    'left_wrist': 9,
+    'right_wrist': 10,
+    'left_hip': 11,
+    'right_hip': 12,
+    'left_knee': 13,
+    'right_knee': 14,
+    'left_ankle': 15,
+    'right_ankle': 16
+}
+
+
+def check_spatial_consistency(x_values, y_values, conf_scores, threshold=1.0):
+    """
+    Check spatial consistency of joint positions.
+
+    Parameters:
+    - x_values (list): List of x coordinates for all joints.
+    - y_values (list): List of y coordinates for all joints.
+    - threshold (float): Threshold for spatial consistency check.
+
+    Returns:
+    - consistent (bool): True if spatially consistent, False otherwise.
+    """
+
+    # Define joint pairs for spatial consistency check
+    joint_pairs = [('nose', 'left_eye'), ('left_eye', 'right_eye'), ('right_eye', 'left_ear'),
+                   ('left_ear', 'right_ear'), ('left_shoulder', 'right_shoulder'),
+                   ('left_shoulder', 'left_elbow'), ('right_shoulder', 'right_elbow'),
+                   ('left_elbow', 'left_wrist'), ('right_elbow', 'right_wrist'),
+                   ('left_shoulder', 'left_hip'), ('right_shoulder', 'right_hip'),
+                   ('left_hip', 'left_knee'), ('right_hip', 'right_knee'),
+                   ('left_knee', 'left_ankle'), ('right_knee', 'right_ankle')]
+
+    # Combine x, y, and confidence values into a list of (x, y, confidence) tuples
+    joints_with_confidence = list(zip(x_values, y_values, conf_scores))
+
+    # Dynamic thresholding based on confidence scores
+    threshold = np.mean(conf_scores) * threshold
+
+    # Check spatial consistency for each joint pair
+    for joint_pair in joint_pairs:
+        joint1, joint2 = KEYPOINT_DICT[joint_pair[0]], KEYPOINT_DICT[joint_pair[1]]
+        distance = np.linalg.norm(
+            np.array(joints_with_confidence[joint1][:2]) - np.array(joints_with_confidence[joint2][:2]))
+        if distance > threshold:
+            return False
+
+    return True
 
 
 # --------------------------------------- VISUALISATION ---------------------------------------
